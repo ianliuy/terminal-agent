@@ -8,9 +8,25 @@ while (true) {
 }
 ```
 
-`agent → terminal → agent → terminal → agent → ...`
+**The missing `agent.fork()` for Claude Code, Codex CLI, Gemini CLI, and Copilot CLI.**
 
-The missing `fork()` for AI agents. Infinite autonomous agent swarms, fully visible in your VS Code. Each one can see, type, read, and spawn more of itself. You just watch.
+```
+                          You (watching)
+                               │
+                          ┌────┴────┐
+                          │ Agent 0 │  ← your Copilot CLI session
+                          └────┬────┘
+                    ┌──────────┼──────────┐
+               ┌────┴────┐ ┌──┴───┐ ┌────┴────┐
+               │ Agent 1 │ │ ...  │ │ Agent N │  ← each in a visible terminal
+               └────┬────┘ └──────┘ └────┬────┘
+            ┌───────┼───────┐          ┌──┴───┐
+       ┌────┴──┐ ┌──┴───┐ ┌┴─────┐   │ ...  │
+       │ 1.1   │ │ 1.2  │ │ 1.3  │   └──────┘  ← agents spawning agents
+       └───────┘ └──────┘ └──────┘
+```
+
+Each agent can see, type, read, and spawn more of itself. You just watch.
 
 ## Features
 
