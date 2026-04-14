@@ -508,6 +508,18 @@ export class TerminalManager implements vscode.Disposable {
         terminal.show(/* preserveFocus */ true);
       }
 
+      // Clean up any duplicate entry created by adoptTerminal race:
+      // onDidOpenTerminal fires for ALL listeners; the constructor's adoptTerminal
+      // may have already added this terminal before our AgentLink/create resolves.
+      for (const [existingId, existing] of this.terminals.entries()) {
+        if (existing.terminal === terminal) {
+          existing.outputBuffer.dispose();
+          this.terminals.delete(existingId);
+          this.log.debug(`Removed duplicate adopt entry: ${existingId} (superseded by ${id})`);
+          break;
+        }
+      }
+
       const managed: ManagedTerminal = {
         id,
         terminal,
@@ -564,6 +576,11 @@ export class TerminalManager implements vscode.Disposable {
       return { usedShellIntegration: false };
     }
 
+    // In Code Tunnel / Remote, sendText and si.executeCommand require
+    // the terminal to be focused. Show it and wait for focus to settle.
+    managed.terminal.show(/* preserveFocus */ false);
+    await new Promise((r) => setTimeout(r, 150));
+
     // Normal mode: prefer Shell Integration for tracked execution boundaries.
     const si = managed.terminal.shellIntegration;
     if (si) {
@@ -586,9 +603,16 @@ export class TerminalManager implements vscode.Disposable {
    * @param params  Terminal ID and ordered key list.
    * @returns       The resolved VT sequences that were transmitted.
    */
-  sendKeys(params: TerminalSendKeysParams): TerminalSendKeysResult {
+  async sendKeys(params: TerminalSendKeysParams): Promise<TerminalSendKeysResult> {
     const managed = this.getManagedForAction(params.terminalId);
     const sent: string[] = [];
+
+    // In Code Tunnel / Remote, sendText requires the terminal to be focused.
+    // show() is async under the hood; wait for focus to settle before typing.
+    if (managed.mode !== 'pty') {
+      managed.terminal.show(/* preserveFocus */ false);
+      await new Promise((r) => setTimeout(r, 150));
+    }
 
     for (const key of params.keys) {
       const seq = this.keyToSequence(key);
