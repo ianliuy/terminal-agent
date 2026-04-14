@@ -1,0 +1,72 @@
+{
+  "name": "terminal-agent",
+  "displayName": "Terminal Agent",
+  "description": "AI agent terminal control via MCP — create, send, read visible VS Code terminals",
+  "version": "0.3.0",
+  "publisher": "yiyangliu",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["terminal", "agent", "AI", "copilot", "mcp", "automation"],
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "terminal-agent.showStatus",
+        "title": "Terminal Agent: Show Status"
+      },
+      {
+        "command": "terminal-agent.restart",
+        "title": "Terminal Agent: Restart Server"
+      }
+    ],
+    "configuration": {
+      "title": "Terminal Agent",
+      "properties": {
+        "terminalAgent.port": {
+          "type": "number",
+          "default": 17580,
+          "description": "Preferred HTTP port (falls back to random if in use)"
+        },
+        "terminalAgent.autoRegister": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-register in ~/.copilot/mcp.json on startup"
+        },
+        "terminalAgent.maxBufferSize": {
+          "type": "number",
+          "default": 1048576,
+          "description": "Max output buffer size per terminal (bytes)"
+        },
+        "terminalAgent.logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info",
+          "description": "Logging verbosity"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.config.js --production",
+    "watch": "node esbuild.config.js --watch",
+    "lint": "tsc --noEmit",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.93.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

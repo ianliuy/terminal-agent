@@ -1,0 +1,13 @@
+.vscode/**
+.vscode-test/**
+src/**
+node_modules/**
+!node_modules/@modelcontextprotocol/**
+!node_modules/zod/**
+.gitignore
+tsconfig.json
+esbuild.config.js
+**/*.ts
+**/*.map
+*.vsix
+.git/**
