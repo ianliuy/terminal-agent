@@ -1,7 +1,16 @@
 # Terminal Agent — VS Code Extension
 
-AI agent terminal control via MCP. Lets AI agents (like GitHub Copilot CLI)
-create, control, and read **visible** VS Code terminal tabs.
+> *An agent opens a terminal. Inside, another agent wakes up. It opens more terminals. More agents wake up. **All the way down.***
+
+```
+while (true) {
+  agent.createTerminal().launchAgent();  // you are here
+}
+```
+
+`agent → terminal → agent → terminal → agent → ...`
+
+The missing `fork()` for AI agents. Infinite autonomous agent swarms, fully visible in your VS Code. Each one can see, type, read, and spawn more of itself. You just watch.
 
 ## Features
 
