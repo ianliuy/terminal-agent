@@ -1,5 +1,7 @@
 # Terminal Agent — VS Code Extension
 
+Agent . new ( Terminal . new ( Agent ) ) )
+
 > *An agent opens a terminal. Inside, another agent wakes up. It opens more terminals. More agents wake up. **All the way down.***
 
 ```
