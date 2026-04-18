@@ -135,6 +135,19 @@ export class AgentOrchestrator {
       }),
     );
 
+    // ── Initial scan: pick up terminals that already exist ──────
+    // onDidOpenTerminal only fires for NEW terminals. Terminals that were
+    // open before the extension activated (or before this method was called)
+    // won't trigger it. Walk the TerminalManager's list once at setup time.
+    const managed = this.terminals.list().terminals;
+    for (const t of managed) {
+      const existing = this.graph.findByTerminalId(t.id);
+      if (!existing) {
+        log.info(`Initial scan: creating node for existing terminal ${t.id} (${t.name})`);
+        this.syncTerminalToGraph(t.id, null, t.name);
+      }
+    }
+
     const composite = vscode.Disposable.from(...subs);
     this.disposables.push(composite);
     return composite;
