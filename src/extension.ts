@@ -26,6 +26,8 @@ import type { LogLevel } from './utils/logger.js';
 import { registerMcpServer, unregisterMcpServer } from './config/autoRegister.js';
 import { AgentGraphManager } from './graph/graphManager.js';
 import { AgentOrchestrator } from './graph/orchestrator.js';
+import { AgentTreeViewProvider } from './webview/agentTreeViewProvider.js';
+import { GraphViewState } from './graph/viewState.js';
 
 // ─── Module-level state (required for deactivate()) ───────────────────────────
 
@@ -96,6 +98,22 @@ export function activate(context: vscode.ExtensionContext): void {
   // Sync terminal lifecycle events to graph
   const terminalWatchers = orchestrator.setupTerminalWatchers();
   context.subscriptions.push(terminalWatchers);
+
+  // ── Step 2c: View State + Webview ─────────────────────────────
+  const viewState = new GraphViewState();
+  context.subscriptions.push({ dispose: () => viewState.dispose() });
+
+  const treeViewProvider = new AgentTreeViewProvider(
+    context.extensionUri,
+    orchestrator,
+    viewState,
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      'terminalAgent.agentTree',
+      treeViewProvider,
+    ),
+  );
 
   // ── Step 3: MCP Server — created per-request (see handleMcpRequest) ──
 
