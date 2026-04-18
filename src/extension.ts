@@ -243,6 +243,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('terminalAgent.showLog', () =>
       channel.show(),
     ),
+
+    vscode.commands.registerCommand('terminal-agent.restart', async () => {
+      await server.stop();
+      updateStatusBar();
+      logger.info('Server restarting via command');
+      await startServer();
+    }),
   );
 
   logger.info('Terminal Agent activated');
