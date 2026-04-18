@@ -35,3 +35,12 @@ export { registerGraphTools } from './mcpTools.js';
 
 export { GraphViewState } from './viewState.js';
 export type { ViewStateSnapshot, ViewStateChangeEvent } from './viewState.js';
+
+export {
+  collapseByDefault,
+  computeVisibleNodes,
+  paginateNodes,
+  throttleUpdates,
+  batchDomUpdates,
+} from './treePerformance.js';
+export type { PaginationResult } from './treePerformance.js';

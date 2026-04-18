@@ -144,6 +144,10 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
         if (msg.nodeId) this.focusTerminal(msg.nodeId);
         break;
 
+      case 'filter':
+        this.viewState.setFilterText(msg.text ?? '');
+        break;
+
       case 'request-sync':
         log.info('Webview requested sync');
         this.postSnapshot();
@@ -317,17 +321,154 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
     }
 
-    /* ── Rollup counts ────────────────────────────────── */
-    .rollup {
-      font-size: 10px;
-      opacity: 0.5;
+    /* ── Rollup badges (collapsed groups) ────────────── */
+    .rollup-badges {
+      display: inline-flex;
+      gap: 3px;
       margin-left: 4px;
       flex-shrink: 0;
     }
+    .rollup-badge {
+      font-size: 9px;
+      padding: 0 4px;
+      border-radius: 7px;
+      line-height: 14px;
+      font-weight: 600;
+    }
+    .rollup-badge.rb-running {
+      background: rgba(137, 209, 133, 0.2);
+      color: var(--vscode-charts-green, #89d185);
+    }
+    .rollup-badge.rb-error {
+      background: rgba(241, 76, 76, 0.2);
+      color: var(--vscode-charts-red, #f14c4c);
+    }
+    .rollup-badge.rb-blocked {
+      background: rgba(204, 167, 0, 0.2);
+      color: var(--vscode-charts-orange, #cca700);
+    }
+    .rollup-badge.rb-total {
+      background: var(--vscode-badge-background, #4d4d4d);
+      color: var(--vscode-badge-foreground, #fff);
+      opacity: 0.6;
+    }
+
+    /* ── Pin indicator ───────────────────────────────── */
+    .pin-icon {
+      font-size: 10px;
+      margin-right: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Tooltip ──────────────────────────────────────── */
+    .node-tooltip {
+      display: none;
+      position: absolute;
+      z-index: 1000;
+      left: 20px;
+      top: 100%;
+      min-width: 220px;
+      max-width: 320px;
+      padding: 8px 10px;
+      background: var(--vscode-editorHoverWidget-background, #2d2d2d);
+      border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--vscode-editorHoverWidget-foreground, #ccc);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      pointer-events: none;
+      white-space: pre-line;
+    }
+    .node-row { position: relative; }
+    .node-row:hover > .node-tooltip { display: block; }
+    .tooltip-label { font-weight: 600; margin-bottom: 4px; }
+    .tooltip-row { opacity: 0.8; }
+    .tooltip-row .tt-key { display: inline-block; min-width: 70px; opacity: 0.6; }
+
+    /* ── Search/filter bar ────────────────────────────── */
+    #search-bar {
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--vscode-panel-border, #333);
+    }
+    #search-input {
+      flex: 1;
+      background: var(--vscode-input-background, #3c3c3c);
+      color: var(--vscode-input-foreground, #ccc);
+      border: 1px solid var(--vscode-input-border, #555);
+      border-radius: 3px;
+      padding: 3px 6px;
+      font-size: 12px;
+      outline: none;
+      font-family: inherit;
+    }
+    #search-input:focus {
+      border-color: var(--vscode-focusBorder, #007acc);
+    }
+    #search-input::placeholder {
+      color: var(--vscode-input-placeholderForeground, #888);
+    }
+
+    /* ── Status bar ───────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-top: 1px solid var(--vscode-panel-border, #333);
+      font-size: 11px;
+      opacity: 0.8;
+      gap: 8px;
+      flex-wrap: wrap;
+      position: sticky;
+      bottom: 0;
+      background: var(--vscode-sideBar-background, transparent);
+    }
+    .status-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .status-count .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-total   { background: var(--vscode-foreground, #ccc); opacity: 0.4; }
+    .dot-running { background: var(--vscode-charts-green, #89d185); }
+    .dot-error   { background: var(--vscode-charts-red, #f14c4c); }
+
+    .filter-buttons {
+      display: inline-flex;
+      gap: 2px;
+      margin-left: auto;
+    }
+    .filter-btn {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--vscode-foreground);
+      cursor: pointer;
+      padding: 1px 6px;
+      font-size: 10px;
+      border-radius: 3px;
+      opacity: 0.6;
+    }
+    .filter-btn:hover { opacity: 1; }
+    .filter-btn.active {
+      opacity: 1;
+      border-color: var(--vscode-focusBorder, #007acc);
+      background: var(--vscode-list-activeSelectionBackground, rgba(0,120,212,0.2));
+    }
+
+    /* ── Filtered-out nodes ──────────────────────────── */
+    .node-hidden { display: none !important; }
   </style>
 </head>
 <body>
+  <div id="search-bar"><input id="search-input" type="text" placeholder="Filter nodes…" /></div>
   <div id="root"></div>
+  <div id="status-bar"></div>
   <script nonce="${nonce}">
   (function() {
     const vscode = acquireVsCodeApi();
@@ -337,8 +478,10 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
     let snapshot = null;     // GraphSnapshot
     let viewState = null;    // ViewStateSnapshot
     let selectedId = null;
+    let filterText = '';
+    let statusFilter = 'all'; // 'all' | 'errors' | 'running'
 
-    // ── Status icon map ───────────────────────────────
+    // ── Status icon map───────────────────────────────
     const STATUS_ICON = {
       'idle':          '◯',
       'queued':        '◦',
@@ -382,6 +525,8 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
         case 'view-state-snapshot':
           viewState = msg.data;
           selectedId = viewState?.selectedId ?? null;
+          filterText = viewState?.filterText ?? '';
+          { const si = document.getElementById('search-input'); if (si) si.value = filterText; }
           render();
           break;
         case 'view-state':
@@ -464,6 +609,10 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
         case 'selected':
           selectedId = event.nodeId ?? null;
           break;
+        case 'filter':
+          filterText = (event.value || '');
+          { const si2 = document.getElementById('search-input'); if (si2) si2.value = filterText; }
+          break;
         case 'bulk':
           // Full refresh needed — request snapshot
           vscode.postMessage({ type: 'request-sync' });
@@ -483,21 +632,31 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
     function render() {
       if (!snapshot) {
         root.innerHTML = '<div id="empty">No agents yet</div>';
+        updateStatusBar(0, 0, 0);
         return;
       }
 
       const rootChildren = snapshot.childOrder['__root__'] || [];
       if (rootChildren.length === 0) {
         root.innerHTML = '<div id="empty">No agents yet</div>';
+        updateStatusBar(0, 0, 0);
         return;
       }
 
+      // Global counts for status bar
+      const allNodes = Object.values(snapshot.nodes);
+      const totalCount = allNodes.length;
+      const runningCount = allNodes.filter(n => n.status === 'running' || n.status === 'starting').length;
+      const errorCount = allNodes.filter(n => n.status === 'error').length;
+
       const fragment = document.createDocumentFragment();
-      for (const childId of rootChildren) {
+      const sorted = sortWithPins(rootChildren);
+      for (const childId of sorted) {
         renderNode(fragment, childId, 0);
       }
       root.innerHTML = '';
       root.appendChild(fragment);
+      updateStatusBar(totalCount, runningCount, errorCount);
     }
 
     function renderNode(container, nodeId, depth) {
@@ -510,9 +669,16 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       const pinned = isPinned(nodeId);
       const selected = selectedId === nodeId;
 
-      // ── Row ────────────────
+      // Filter visibility
+      const visible = isNodeVisible(nodeId);
+      const statusVisible = isStatusVisible(nodeId);
+
+      // Row
       const row = document.createElement('div');
-      row.className = 'node-row' + (selected ? ' selected' : '') + (pinned ? ' pinned' : '');
+      row.className = 'node-row'
+        + (selected ? ' selected' : '')
+        + (pinned ? ' pinned' : '')
+        + (!visible || !statusVisible ? ' node-hidden' : '');
       row.style.paddingLeft = (8 + depth * 16) + 'px';
       row.dataset.nodeId = nodeId;
 
@@ -526,18 +692,24 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       });
       row.appendChild(chevron);
 
+      // Pin indicator
+      if (pinned) {
+        const pinEl = document.createElement('span');
+        pinEl.className = 'pin-icon';
+        pinEl.textContent = '\uD83D\uDCCC'; // 📌
+        row.appendChild(pinEl);
+      }
+
       // Status icon
       const statusEl = document.createElement('span');
       statusEl.className = 'status-icon ' + (STATUS_CLASS[node.status] || '');
       statusEl.textContent = STATUS_ICON[node.status] || '?';
-      statusEl.title = node.status;
       row.appendChild(statusEl);
 
       // Label
       const label = document.createElement('span');
       label.className = 'node-label';
       label.textContent = node.label;
-      label.title = node.label;
       row.appendChild(label);
 
       // Role badge
@@ -548,50 +720,75 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
         row.appendChild(badge);
       }
 
-      // Summary
-      if (node.summary) {
+      // Summary (hide when collapsed to make room for rollup badges)
+      if (node.summary && !(hasChildren && collapsed)) {
         const summary = document.createElement('span');
         summary.className = 'node-summary';
         summary.textContent = node.summary;
-        summary.title = node.summary;
         row.appendChild(summary);
       }
 
-      // Rollup for groups with collapsed children
+      // Rollup badges for collapsed groups
       if (hasChildren && collapsed) {
-        const count = countSubtree(nodeId);
-        const rollup = document.createElement('span');
-        rollup.className = 'rollup';
-        rollup.textContent = '(' + count + ')';
-        row.appendChild(rollup);
+        const rollup = computeRollup(nodeId);
+        const badges = document.createElement('span');
+        badges.className = 'rollup-badges';
+
+        if (rollup.running > 0) {
+          const b = document.createElement('span');
+          b.className = 'rollup-badge rb-running';
+          b.textContent = rollup.running + ' running';
+          badges.appendChild(b);
+        }
+        if (rollup.error > 0) {
+          const b = document.createElement('span');
+          b.className = 'rollup-badge rb-error';
+          b.textContent = rollup.error + ' error';
+          badges.appendChild(b);
+        }
+        if (rollup.blocked > 0) {
+          const b = document.createElement('span');
+          b.className = 'rollup-badge rb-blocked';
+          b.textContent = rollup.blocked + ' blocked';
+          badges.appendChild(b);
+        }
+
+        const totalBadge = document.createElement('span');
+        totalBadge.className = 'rollup-badge rb-total';
+        totalBadge.textContent = rollup.total + ' total';
+        badges.appendChild(totalBadge);
+
+        row.appendChild(badges);
       }
 
-      // Action buttons
+      // Action buttons (visible on hover)
       const actions = document.createElement('span');
       actions.className = 'node-actions';
 
       if (node.terminalId) {
-        const focusBtn = createActionBtn('⬡', 'Focus terminal', () =>
-          vscode.postMessage({ type: 'focus-terminal', nodeId }),
-        );
-        actions.appendChild(focusBtn);
+        actions.appendChild(createActionBtn('\uD83D\uDC41', 'Focus terminal', () =>
+          vscode.postMessage({ type: 'focus-terminal', nodeId })));
       }
 
-      if (node.status === 'running' || node.status === 'starting') {
-        const stopBtn = createActionBtn('■', 'Stop', () =>
-          vscode.postMessage({ type: 'stop', nodeId }),
-        );
-        actions.appendChild(stopBtn);
+      const isRunnable = node.status === 'running' || node.status === 'starting';
+      const subtreeHasRunning = hasChildren && computeRollup(nodeId).running > 0;
+      if (isRunnable || subtreeHasRunning) {
+        actions.appendChild(createActionBtn('\u23F9', 'Stop subtree', () =>
+          vscode.postMessage({ type: 'stop', nodeId })));
       }
 
       if (node.status === 'error' || node.status === 'stopped') {
-        const retryBtn = createActionBtn('↻', 'Retry', () =>
-          vscode.postMessage({ type: 'retry', nodeId }),
-        );
-        actions.appendChild(retryBtn);
+        actions.appendChild(createActionBtn('\uD83D\uDD04', 'Retry', () =>
+          vscode.postMessage({ type: 'retry', nodeId })));
       }
 
       row.appendChild(actions);
+
+      // Tooltip (rich info on hover)
+      const tooltip = document.createElement('div');
+      tooltip.className = 'node-tooltip';
+      tooltip.innerHTML = buildTooltipHtml(node, nodeId, hasChildren);
+      row.appendChild(tooltip);
 
       // Click to select
       row.addEventListener('click', () => {
@@ -602,21 +799,148 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
 
       container.appendChild(row);
 
-      // ── Children ───────────
+      // Children (pinned first)
       if (hasChildren && !collapsed) {
-        for (const childId of children) {
+        const sorted = sortWithPins(children);
+        for (const childId of sorted) {
           renderNode(container, childId, depth + 1);
         }
       }
     }
 
-    function countSubtree(nodeId) {
-      const children = snapshot.childOrder[nodeId] || [];
-      let count = children.length;
-      for (const childId of children) {
-        count += countSubtree(childId);
+    // ── Rollup computation ──────────────────────────
+    function computeRollup(nodeId) {
+      let total = 0, running = 0, error = 0, blocked = 0;
+      function walk(id) {
+        const n = snapshot.nodes[id];
+        if (!n) return;
+        total++;
+        if (n.status === 'running' || n.status === 'starting') running++;
+        if (n.status === 'error') error++;
+        if (n.status === 'blocked') blocked++;
+        const kids = snapshot.childOrder[id] || [];
+        for (const kid of kids) walk(kid);
       }
-      return count;
+      const children = snapshot.childOrder[nodeId] || [];
+      for (const childId of children) walk(childId);
+      return { total, running, error, blocked };
+    }
+
+    // ── Pin sorting ──────────────────────────────────
+    function sortWithPins(childIds) {
+      const p = [], u = [];
+      for (const id of childIds) {
+        if (isPinned(id)) p.push(id); else u.push(id);
+      }
+      return p.concat(u);
+    }
+
+    // ── Filter helpers ───────────────────────────────
+    function isNodeVisible(nodeId) {
+      if (!filterText) return true;
+      if (nodeMatchesFilter(nodeId)) return true;
+      if (hasMatchingDescendant(nodeId)) return true;
+      return hasMatchingAncestor(nodeId);
+    }
+
+    function nodeMatchesFilter(nodeId) {
+      const node = snapshot.nodes[nodeId];
+      if (!node) return false;
+      const q = filterText.toLowerCase();
+      return (
+        (node.label && node.label.toLowerCase().includes(q)) ||
+        (node.role && node.role.toLowerCase().includes(q)) ||
+        (node.summary && node.summary.toLowerCase().includes(q))
+      );
+    }
+
+    function hasMatchingDescendant(nodeId) {
+      const children = snapshot.childOrder[nodeId] || [];
+      for (const childId of children) {
+        if (nodeMatchesFilter(childId)) return true;
+        if (hasMatchingDescendant(childId)) return true;
+      }
+      return false;
+    }
+
+    function hasMatchingAncestor(nodeId) {
+      const node = snapshot.nodes[nodeId];
+      if (!node || !node.parentId) return false;
+      if (nodeMatchesFilter(node.parentId)) return true;
+      return hasMatchingAncestor(node.parentId);
+    }
+
+    function isStatusVisible(nodeId) {
+      if (statusFilter === 'all') return true;
+      const node = snapshot.nodes[nodeId];
+      if (!node) return false;
+      // Groups visible if they have matching descendants
+      const children = snapshot.childOrder[nodeId] || [];
+      if (children.length > 0) {
+        for (const childId of children) {
+          if (isStatusVisible(childId)) return true;
+        }
+      }
+      if (statusFilter === 'errors') return node.status === 'error';
+      if (statusFilter === 'running') return node.status === 'running' || node.status === 'starting';
+      return true;
+    }
+
+    // ── Tooltip builder ──────────────────────────────
+    function buildTooltipHtml(node, nodeId, hasChildren) {
+      let h = '<div class="tooltip-label">' + escHtml(node.label) + '</div>';
+      h += '<div class="tooltip-row"><span class="tt-key">Role:</span> ' + escHtml(node.role || '\u2014') + '</div>';
+      h += '<div class="tooltip-row"><span class="tt-key">Status:</span> ' + escHtml(node.status) + '</div>';
+      h += '<div class="tooltip-row"><span class="tt-key">Elapsed:</span> ' + formatElapsed(node.createdAt) + '</div>';
+      if (node.summary) {
+        h += '<div class="tooltip-row"><span class="tt-key">Summary:</span> ' + escHtml(node.summary) + '</div>';
+      }
+      if (hasChildren) {
+        const r = computeRollup(nodeId);
+        let sub = r.total + ' nodes';
+        if (r.running) sub += ', ' + r.running + ' running';
+        if (r.error) sub += ', ' + r.error + ' errors';
+        if (r.blocked) sub += ', ' + r.blocked + ' blocked';
+        h += '<div class="tooltip-row"><span class="tt-key">Subtree:</span> ' + sub + '</div>';
+      }
+      if (node.terminalId) {
+        h += '<div class="tooltip-row"><span class="tt-key">Terminal:</span> ' + escHtml(node.terminalId) + '</div>';
+      }
+      return h;
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function formatElapsed(createdAt) {
+      if (!createdAt) return '\u2014';
+      const ms = Date.now() - createdAt;
+      if (ms < 1000) return '<1s';
+      if (ms < 60000) return Math.floor(ms / 1000) + 's';
+      if (ms < 3600000) return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
+      return Math.floor(ms / 3600000) + 'h ' + Math.floor((ms % 3600000) / 60000) + 'm';
+    }
+
+    // ── Status bar ───────────────────────────────────
+    function updateStatusBar(total, running, errorCt) {
+      const bar = document.getElementById('status-bar');
+      if (!bar) return;
+      bar.innerHTML =
+        '<span class="status-count"><span class="dot dot-total"></span>' + total + ' nodes</span>' +
+        '<span class="status-count"><span class="dot dot-running"></span>' + running + ' running</span>' +
+        '<span class="status-count"><span class="dot dot-error"></span>' + errorCt + ' errors</span>' +
+        '<span class="filter-buttons">' +
+          '<button class="filter-btn' + (statusFilter === 'all' ? ' active' : '') + '" data-filter="all">All</button>' +
+          '<button class="filter-btn' + (statusFilter === 'errors' ? ' active' : '') + '" data-filter="errors">Errors</button>' +
+          '<button class="filter-btn' + (statusFilter === 'running' ? ' active' : '') + '" data-filter="running">Running</button>' +
+        '</span>';
+      bar.querySelectorAll('.filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          statusFilter = btn.dataset.filter;
+          render();
+        });
+      });
     }
 
     function createActionBtn(icon, title, handler) {
@@ -630,6 +954,13 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       });
       return btn;
     }
+
+    // ── Search input handling ───────────────────────
+    document.getElementById('search-input').addEventListener('input', function(e) {
+      filterText = e.target.value;
+      vscode.postMessage({ type: 'filter', text: filterText });
+      render();
+    });
 
     // ── Initial sync request ──────────────────────────
     vscode.postMessage({ type: 'request-sync' });
@@ -665,6 +996,8 @@ interface WebviewIncomingMessage {
     | 'stop'
     | 'retry'
     | 'focus-terminal'
+    | 'filter'
     | 'request-sync';
   nodeId?: string;
+  text?: string;
 }
