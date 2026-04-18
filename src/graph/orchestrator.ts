@@ -404,6 +404,24 @@ export class AgentOrchestrator {
   }
 
   // =========================================================================
+  // Terminal focus
+  // =========================================================================
+
+  /**
+   * Show (focus) a VS Code terminal by its managed terminal ID.
+   *
+   * @returns `true` if the terminal was found and shown.
+   */
+  focusTerminalById(terminalId: string): boolean {
+    const terminal = this.terminals.getVscodeTerminal(terminalId);
+    if (terminal) {
+      terminal.show();
+      return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
   // Dispose
   // =========================================================================
 

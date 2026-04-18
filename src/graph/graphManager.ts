@@ -143,7 +143,7 @@ export class AgentGraphManager {
     this.version++;
     this.recomputeRollups(full.id);
 
-    this.emitEvent({ type: 'node-added', nodeId: full.id, timestamp: Date.now() });
+    this.emitEvent({ type: 'node-added', nodeId: full.id, timestamp: Date.now(), changes: { ...full } });
 
     return full;
   }

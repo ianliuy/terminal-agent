@@ -173,14 +173,21 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Walk VS Code terminals to find a matching one by name
+    // Try matching by terminalId first (reliable)
+    const focused = this.orchestrator.focusTerminalById(node.terminalId);
+    if (focused) {
+      log.info(`Focused terminal by ID: ${node.terminalId}`);
+      return;
+    }
+
+    // Fallback: match by name (backward compat)
     const terminals = vscode.window.terminals;
     const match = terminals.find((t) => t.name === node.label);
     if (match) {
       match.show();
-      log.info(`Focused terminal "${node.label}"`);
+      log.info(`Focused terminal by name: "${node.label}"`);
     } else {
-      log.warn(`focusTerminal: no VS Code terminal found for "${node.label}"`);
+      log.warn(`focusTerminal: no terminal found for node ${nodeId}`);
     }
   }
 

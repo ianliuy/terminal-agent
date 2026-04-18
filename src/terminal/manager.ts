@@ -748,6 +748,15 @@ export class TerminalManager implements vscode.Disposable {
   }
 
   /**
+   * Return the VS Code {@link vscode.Terminal} instance for the given managed terminal ID,
+   * or `undefined` if no live (non-closed) terminal matches.
+   */
+  getVscodeTerminal(id: string): vscode.Terminal | undefined {
+    const managed = this.terminals.get(id);
+    return managed && !managed.closed ? managed.terminal : undefined;
+  }
+
+  /**
    * List all currently tracked terminals (excluding closed ones past grace period).
    *
    * @returns  Summary information for every managed terminal.

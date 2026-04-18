@@ -92,7 +92,8 @@
     "build": "node esbuild.config.js --production",
     "watch": "node esbuild.config.js --watch",
     "lint": "tsc --noEmit",
-    "package": "npx @vscode/vsce package --no-dependencies"
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "test": "vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
