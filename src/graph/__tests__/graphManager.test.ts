@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { AgentGraphManager } from '../graphManager.js';
 import type { AgentNode, GraphPatch } from '../types.js';
 
