@@ -14,6 +14,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { TerminalManager } from '../terminal/manager.js';
+import type { AgentOrchestrator } from '../graph/orchestrator.js';
+import { registerGraphTools } from '../graph/mcpTools.js';
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -25,7 +27,10 @@ import type { TerminalManager } from '../terminal/manager.js';
  * The returned server is *not* connected to a transport — the HTTP layer
  * calls `server.connect(transport)` per request (stateless mode).
  */
-export function createMcpServer(terminalManager: TerminalManager): McpServer {
+export function createMcpServer(
+  terminalManager: TerminalManager,
+  orchestrator?: AgentOrchestrator,
+): McpServer {
   const server = new McpServer({
     name: 'terminal-agent',
     version: '0.3.0',
@@ -295,6 +300,11 @@ export function createMcpServer(terminalManager: TerminalManager): McpServer {
       }
     },
   );
+
+  // Register graph management tools if orchestrator is available
+  if (orchestrator) {
+    registerGraphTools(server, orchestrator);
+  }
 
   return server;
 }

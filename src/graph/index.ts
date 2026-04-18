@@ -30,5 +30,8 @@ export {
 
 export { AgentGraphManager } from './graphManager.js';
 
+export { AgentOrchestrator } from './orchestrator.js';
+export { registerGraphTools } from './mcpTools.js';
+
 export { GraphViewState } from './viewState.js';
 export type { ViewStateSnapshot, ViewStateChangeEvent } from './viewState.js';

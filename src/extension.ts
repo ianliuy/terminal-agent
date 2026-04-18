@@ -24,6 +24,8 @@ import { TerminalManager } from './terminal/manager.js';
 import { initLogger, logger } from './utils/logger.js';
 import type { LogLevel } from './utils/logger.js';
 import { registerMcpServer, unregisterMcpServer } from './config/autoRegister.js';
+import { AgentGraphManager } from './graph/graphManager.js';
+import { AgentOrchestrator } from './graph/orchestrator.js';
 
 // ─── Module-level state (required for deactivate()) ───────────────────────────
 
@@ -41,11 +43,12 @@ let _unregisterOnDeactivate = false;
  */
 async function handleMcpRequest(
   terminalManager: TerminalManager,
+  orchestrator: AgentOrchestrator,
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<void> {
   try {
-    const server = createMcpServer(terminalManager);
+    const server = createMcpServer(terminalManager, orchestrator);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
@@ -83,6 +86,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const terminalManager = new TerminalManager(maxBuffer);
   context.subscriptions.push(terminalManager);
 
+  // ── Step 2b: Agent Graph + Orchestrator ──────────────────────────
+  const graphManager = new AgentGraphManager();
+  context.subscriptions.push({ dispose: () => graphManager.dispose() });
+
+  const orchestrator = new AgentOrchestrator(graphManager, terminalManager);
+  context.subscriptions.push({ dispose: () => orchestrator.dispose() });
+
+  // Sync terminal lifecycle events to graph
+  const terminalWatchers = orchestrator.setupTerminalWatchers();
+  context.subscriptions.push(terminalWatchers);
+
   // ── Step 3: MCP Server — created per-request (see handleMcpRequest) ──
 
   // ── Step 4: HTTP Server ─────────────────────────────────────────
@@ -90,6 +104,7 @@ export function activate(context: vscode.ExtensionContext): void {
     status: 'ok',
     uptime: process.uptime(),
     terminals: terminalManager.count,
+    graphNodes: graphManager.getSnapshot().version,
   });
 
   const preferredPort = cfg.get<number>('port', 17_580);
@@ -97,7 +112,7 @@ export function activate(context: vscode.ExtensionContext): void {
   _unregisterOnDeactivate = autoRegister;
 
   const server = new HttpServer(
-    (req, res) => handleMcpRequest(terminalManager, req, res),
+    (req, res) => handleMcpRequest(terminalManager, orchestrator, req, res),
     healthFn,
     preferredPort,
   );
