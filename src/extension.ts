@@ -27,6 +27,7 @@ import { registerMcpServer, unregisterMcpServer } from './config/autoRegister.js
 import { AgentGraphManager } from './graph/graphManager.js';
 import { AgentOrchestrator } from './graph/orchestrator.js';
 import { AgentTreeViewProvider } from './webview/agentTreeViewProvider.js';
+import { AgentDetailViewProvider } from './webview/agentDetailViewProvider.js';
 import { GraphViewState } from './graph/viewState.js';
 import { GraphPersistence } from './graph/persistence.js';
 
@@ -119,6 +120,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(
       'terminalAgent.agentTree',
       treeViewProvider,
+    ),
+  );
+
+  const detailViewProvider = new AgentDetailViewProvider(
+    context.extensionUri,
+    orchestrator,
+    viewState,
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      'terminalAgent.agentDetail',
+      detailViewProvider,
     ),
   );
 

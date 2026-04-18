@@ -474,6 +474,22 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
 
     /* ── Filtered-out nodes ──────────────────────────── */
     .node-hidden { display: none !important; }
+
+    /* ── Show-more pagination button ─────────────────── */
+    .show-more-btn {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      background: var(--vscode-button-secondaryBackground, #3a3d41);
+      color: var(--vscode-button-secondaryForeground, #ccc);
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .show-more-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground, #45494e);
+    }
   </style>
 </head>
 <body>
@@ -491,6 +507,23 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
     let selectedId = null;
     let filterText = '';
     let statusFilter = 'all'; // 'all' | 'errors' | 'running'
+
+    // ── Throttle render to max once per 100ms ─────────
+    let renderPending = false;
+    let renderTimer = null;
+    const PAGE_SIZE = 200;
+    let currentPage = 0;
+
+    function scheduleRender() {
+      currentPage = 0;
+      if (renderPending) return;
+      renderPending = true;
+      renderTimer = setTimeout(() => {
+        renderPending = false;
+        renderTimer = null;
+        render();
+      }, 100);
+    }
 
     // ── Status icon map───────────────────────────────
     const STATUS_ICON = {
@@ -531,7 +564,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'patch':
           if (snapshot) applyPatch(msg.data);
-          render();
+          scheduleRender();
           break;
         case 'view-state-snapshot':
           viewState = msg.data;
@@ -542,7 +575,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
           break;
         case 'view-state':
           applyViewStateEvent(msg.data);
-          render();
+          scheduleRender();
           break;
       }
     });
@@ -660,36 +693,91 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       const runningCount = allNodes.filter(n => n.status === 'running' || n.status === 'starting').length;
       const errorCount = allNodes.filter(n => n.status === 'error').length;
 
-      const fragment = document.createDocumentFragment();
-      const sorted = sortWithPins(rootChildren);
-      for (const childId of sorted) {
-        renderNode(fragment, childId, 0);
+      // Compute visible nodes (respecting collapse + filter)
+      const visibleNodes = computeVisibleList();
+
+      if (visibleNodes.length === 0) {
+        root.innerHTML = '<div id="empty">No agents match filter</div>';
+        updateStatusBar(totalCount, runningCount, errorCount);
+        return;
       }
+
+      // Pagination: show up to (currentPage + 1) * PAGE_SIZE nodes
+      const end = Math.min((currentPage + 1) * PAGE_SIZE, visibleNodes.length);
+      const pageNodes = visibleNodes.slice(0, end);
+
+      const fragment = document.createDocumentFragment();
+
+      for (const { id, depth } of pageNodes) {
+        const node = snapshot.nodes[id];
+        if (!node) continue;
+        const row = createNodeRow(node, depth);
+        fragment.appendChild(row);
+      }
+
+      // "Show more" button when paginated
+      if (end < visibleNodes.length) {
+        const showMore = document.createElement('button');
+        showMore.className = 'show-more-btn';
+        showMore.textContent = 'Show more (' + (visibleNodes.length - end) + ' remaining)';
+        showMore.onclick = () => { currentPage++; render(); };
+        fragment.appendChild(showMore);
+      }
+
       root.innerHTML = '';
       root.appendChild(fragment);
       updateStatusBar(totalCount, runningCount, errorCount);
     }
 
-    function renderNode(container, nodeId, depth) {
-      const node = snapshot.nodes[nodeId];
-      if (!node) return;
+    // ── Compute visible node list (flat DFS) ──────────
+    function computeVisibleList() {
+      const result = [];
+      const roots = snapshot.childOrder['__root__'] || [];
 
+      function walk(nodeId, depth) {
+        const node = snapshot.nodes[nodeId];
+        if (!node) return;
+
+        // Apply text filter + status filter
+        if (!isNodeVisible(nodeId) || !isStatusVisible(nodeId)) return;
+
+        result.push({ id: nodeId, depth: depth });
+
+        // If collapsed, don't walk children
+        if (isCollapsed(nodeId)) return;
+
+        const children = snapshot.childOrder[nodeId] || [];
+        const sorted = sortWithPins(children);
+        for (const childId of sorted) {
+          walk(childId, depth + 1);
+        }
+      }
+
+      const sortedRoots = sortWithPins(roots);
+      for (const rootId of sortedRoots) {
+        walk(rootId, 0);
+      }
+
+      return result;
+    }
+
+    // ── Create a single node row element ─────────────
+    function createNodeRow(node, depth) {
+      const nodeId = node.id;
       const children = snapshot.childOrder[nodeId] || [];
       const hasChildren = children.length > 0;
       const collapsed = isCollapsed(nodeId);
       const pinned = isPinned(nodeId);
       const selected = selectedId === nodeId;
 
-      // Filter visibility
-      const visible = isNodeVisible(nodeId);
-      const statusVisible = isStatusVisible(nodeId);
+      // Rollup: only compute for collapsed groups (perf optimisation)
+      const rollup = (hasChildren && collapsed) ? computeRollup(nodeId) : null;
 
       // Row
       const row = document.createElement('div');
       row.className = 'node-row'
         + (selected ? ' selected' : '')
-        + (pinned ? ' pinned' : '')
-        + (!visible || !statusVisible ? ' node-hidden' : '');
+        + (pinned ? ' pinned' : '');
       row.style.paddingLeft = (8 + depth * 16) + 'px';
       row.dataset.nodeId = nodeId;
 
@@ -732,7 +820,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       }
 
       // Summary (hide when collapsed to make room for rollup badges)
-      if (node.summary && !(hasChildren && collapsed)) {
+      if (node.summary && !rollup) {
         const summary = document.createElement('span');
         summary.className = 'node-summary';
         summary.textContent = node.summary;
@@ -740,8 +828,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       }
 
       // Rollup badges for collapsed groups
-      if (hasChildren && collapsed) {
-        const rollup = computeRollup(nodeId);
+      if (rollup) {
         const badges = document.createElement('span');
         badges.className = 'rollup-badges';
 
@@ -782,7 +869,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       }
 
       const isRunnable = node.status === 'running' || node.status === 'starting';
-      const subtreeHasRunning = hasChildren && computeRollup(nodeId).running > 0;
+      const subtreeHasRunning = rollup ? rollup.running > 0 : false;
       if (isRunnable || subtreeHasRunning) {
         actions.appendChild(createActionBtn('\u23F9', 'Stop subtree', () =>
           vscode.postMessage({ type: 'stop', nodeId })));
@@ -798,25 +885,17 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       // Tooltip (rich info on hover)
       const tooltip = document.createElement('div');
       tooltip.className = 'node-tooltip';
-      tooltip.innerHTML = buildTooltipHtml(node, nodeId, hasChildren);
+      tooltip.innerHTML = buildTooltipHtml(node, nodeId, hasChildren, rollup);
       row.appendChild(tooltip);
 
       // Click to select
       row.addEventListener('click', () => {
         selectedId = nodeId;
         vscode.postMessage({ type: 'select', nodeId });
-        render();
+        scheduleRender();
       });
 
-      container.appendChild(row);
-
-      // Children (pinned first)
-      if (hasChildren && !collapsed) {
-        const sorted = sortWithPins(children);
-        for (const childId of sorted) {
-          renderNode(container, childId, depth + 1);
-        }
-      }
+      return row;
     }
 
     // ── Rollup computation ──────────────────────────
@@ -898,7 +977,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
     }
 
     // ── Tooltip builder ──────────────────────────────
-    function buildTooltipHtml(node, nodeId, hasChildren) {
+    function buildTooltipHtml(node, nodeId, hasChildren, rollup) {
       let h = '<div class="tooltip-label">' + escHtml(node.label) + '</div>';
       h += '<div class="tooltip-row"><span class="tt-key">Role:</span> ' + escHtml(node.role || '\u2014') + '</div>';
       h += '<div class="tooltip-row"><span class="tt-key">Status:</span> ' + escHtml(node.status) + '</div>';
@@ -906,12 +985,11 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       if (node.summary) {
         h += '<div class="tooltip-row"><span class="tt-key">Summary:</span> ' + escHtml(node.summary) + '</div>';
       }
-      if (hasChildren) {
-        const r = computeRollup(nodeId);
-        let sub = r.total + ' nodes';
-        if (r.running) sub += ', ' + r.running + ' running';
-        if (r.error) sub += ', ' + r.error + ' errors';
-        if (r.blocked) sub += ', ' + r.blocked + ' blocked';
+      if (hasChildren && rollup) {
+        let sub = rollup.total + ' nodes';
+        if (rollup.running) sub += ', ' + rollup.running + ' running';
+        if (rollup.error) sub += ', ' + rollup.error + ' errors';
+        if (rollup.blocked) sub += ', ' + rollup.blocked + ' blocked';
         h += '<div class="tooltip-row"><span class="tt-key">Subtree:</span> ' + sub + '</div>';
       }
       if (node.terminalId) {
@@ -949,7 +1027,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
       bar.querySelectorAll('.filter-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           statusFilter = btn.dataset.filter;
-          render();
+          scheduleRender();
         });
       });
     }
@@ -970,7 +1048,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
     document.getElementById('search-input').addEventListener('input', function(e) {
       filterText = e.target.value;
       vscode.postMessage({ type: 'filter', text: filterText });
-      render();
+      scheduleRender();
     });
 
     // ── Initial sync request ──────────────────────────

@@ -42,6 +42,11 @@
           "type": "webview",
           "id": "terminalAgent.agentTree",
           "name": "Agent Tree"
+        },
+        {
+          "type": "webview",
+          "id": "terminalAgent.agentDetail",
+          "name": "Agent Detail"
         }
       ]
     },
