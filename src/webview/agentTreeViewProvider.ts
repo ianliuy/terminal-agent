@@ -93,6 +93,8 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
 
   private postSnapshot(): void {
     const syncMsg = this.orchestrator.getInitialSyncMessage();
+    // syncMsg is { type: 'snapshot', data: GraphSnapshot }
+    // Send unwrapped so webview receives { type: 'snapshot', data: GraphSnapshot } directly
     this.postMessage(syncMsg);
 
     // Also send current view-state snapshot
@@ -103,7 +105,9 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
   }
 
   private postMessage(msg: unknown): void {
-    if (this.view?.visible) {
+    // Always try to post — VS Code buffers messages for webviews that
+    // are not yet visible and delivers them when they become visible.
+    if (this.view) {
       void this.view.webview.postMessage(msg);
     }
   }
