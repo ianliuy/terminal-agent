@@ -28,6 +28,7 @@ import { AgentGraphManager } from './graph/graphManager.js';
 import { AgentOrchestrator } from './graph/orchestrator.js';
 import { AgentTreeViewProvider } from './webview/agentTreeViewProvider.js';
 import { GraphViewState } from './graph/viewState.js';
+import { GraphPersistence } from './graph/persistence.js';
 
 // ─── Module-level state (required for deactivate()) ───────────────────────────
 
@@ -102,6 +103,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // ── Step 2c: View State + Webview ─────────────────────────────
   const viewState = new GraphViewState();
   context.subscriptions.push({ dispose: () => viewState.dispose() });
+
+  // ── Step 2d: Persistence ──────────────────────────────────────
+  const persistence = new GraphPersistence(context, graphManager, viewState);
+  persistence.restore();
+  persistence.startAutoSave();
+  context.subscriptions.push({ dispose: () => persistence.dispose() });
 
   const treeViewProvider = new AgentTreeViewProvider(
     context.extensionUri,

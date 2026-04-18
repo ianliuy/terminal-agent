@@ -16,7 +16,7 @@ import * as vscode from 'vscode';
 import { AgentGraphManager } from './graphManager.js';
 import type { AgentNode, GraphPatch, GraphSyncMessage } from './types.js';
 import { generateNodeId } from './helpers.js';
-import type { TerminalManager } from '../terminal/manager.js';
+import type { ITerminalBackend } from '../terminal/backend.js';
 import { logger } from '../utils/logger.js';
 
 const log = logger.withContext('AgentOrchestrator');
@@ -35,7 +35,7 @@ export class AgentOrchestrator {
 
   constructor(
     private readonly graph: AgentGraphManager,
-    private readonly terminals: TerminalManager,
+    private readonly terminals: ITerminalBackend,
   ) {}
 
   // =========================================================================
@@ -413,10 +413,14 @@ export class AgentOrchestrator {
    * @returns `true` if the terminal was found and shown.
    */
   focusTerminalById(terminalId: string): boolean {
-    const terminal = this.terminals.getVscodeTerminal(terminalId);
-    if (terminal) {
-      terminal.show();
-      return true;
+    if (this.terminals.getVscodeTerminal) {
+      const terminal = this.terminals.getVscodeTerminal(terminalId) as
+        | { show(): void }
+        | undefined;
+      if (terminal) {
+        terminal.show();
+        return true;
+      }
     }
     return false;
   }
