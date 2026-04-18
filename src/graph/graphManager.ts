@@ -70,6 +70,7 @@ export class AgentGraphManager {
   private nodes: Map<string, AgentNode> = new Map();
   private childOrder: Map<string, string[]> = new Map();
   private rollups: Map<string, RollupCounts> = new Map();
+  private terminalIndex = new Map<string, string>(); // terminalId → nodeId
   private version = 0;
   private batchDepth = 0;
   private pendingEvents: GraphEvent[] = [];
@@ -111,6 +112,10 @@ export class AgentGraphManager {
     };
 
     this.nodes.set(full.id, full);
+
+    if (full.terminalId) {
+      this.terminalIndex.set(full.terminalId, full.id);
+    }
 
     // Append to parent's child list (or insert at sortOrder position)
     const parentKey = full.parentId ?? ROOT_KEY;
@@ -165,8 +170,12 @@ export class AgentGraphManager {
       if (idx !== -1) siblings.splice(idx, 1);
     }
 
-    // Remove each node + its childOrder entry
+    // Remove each node + its childOrder entry + terminal index
     for (const nid of allIds) {
+      const n = this.nodes.get(nid);
+      if (n?.terminalId) {
+        this.terminalIndex.delete(n.terminalId);
+      }
       this.nodes.delete(nid);
       this.childOrder.delete(nid);
       this.rollups.delete(nid);
@@ -204,6 +213,17 @@ export class AgentGraphManager {
     const node = this.nodes.get(id);
     if (!node) {
       throw new Error(`Node "${id}" not found`);
+    }
+
+    // Update terminal index before applying changes
+    if ('terminalId' in changes) {
+      const oldTerminalId = node.terminalId;
+      if (oldTerminalId) {
+        this.terminalIndex.delete(oldTerminalId);
+      }
+      if (changes.terminalId) {
+        this.terminalIndex.set(changes.terminalId, id);
+      }
     }
 
     const statusChanged =
@@ -381,13 +401,11 @@ export class AgentGraphManager {
   }
 
   /**
-   * Find a node by its associated terminal ID (linear scan).
+   * Find a node by its associated terminal ID (O(1) index lookup).
    */
   findByTerminalId(terminalId: string): AgentNode | undefined {
-    for (const node of this.nodes.values()) {
-      if (node.terminalId === terminalId) return node;
-    }
-    return undefined;
+    const nodeId = this.terminalIndex.get(terminalId);
+    return nodeId ? this.nodes.get(nodeId) : undefined;
   }
 
   /** Find all nodes with a given role. */
@@ -563,6 +581,14 @@ export class AgentGraphManager {
       this.childOrder.set(ROOT_KEY, []);
     }
 
+    // Rebuild terminal index from loaded nodes
+    this.terminalIndex.clear();
+    for (const [nodeId, node] of this.nodes) {
+      if (node.terminalId) {
+        this.terminalIndex.set(node.terminalId, nodeId);
+      }
+    }
+
     this.version = snapshot.version;
 
     // Recompute all rollups bottom-up: process leaves first
@@ -678,6 +704,7 @@ export class AgentGraphManager {
     this.nodes.clear();
     this.childOrder.clear();
     this.rollups.clear();
+    this.terminalIndex.clear();
     this.pendingEvents = [];
     this.batchDepth = 0;
     this.version = 0;
