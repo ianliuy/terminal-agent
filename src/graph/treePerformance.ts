@@ -224,8 +224,13 @@ export function batchDomUpdates(updates: Array<() => void>): void {
     }
   };
 
-  if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(run);
+  // Browser environment check — requestAnimationFrame may not exist in Node.js
+  const raf = (globalThis as unknown as Record<string, unknown>)['requestAnimationFrame'] as
+    | ((cb: () => void) => void)
+    | undefined;
+
+  if (typeof raf === 'function') {
+    raf(run);
   } else {
     // Node.js fallback — run on next tick
     setTimeout(run, 0);

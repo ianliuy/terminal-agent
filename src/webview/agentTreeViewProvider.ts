@@ -12,7 +12,7 @@
 import * as vscode from 'vscode';
 import type { AgentOrchestrator } from '../graph/orchestrator.js';
 import type { GraphViewState } from '../graph/viewState.js';
-import type { GraphPatch, GraphSyncMessage } from '../graph/types.js';
+import type { GraphPatch } from '../graph/types.js';
 import { logger } from '../utils/logger.js';
 
 const log = logger.withContext('AgentTreeView');
@@ -182,7 +182,7 @@ export class AgentTreeViewProvider implements vscode.WebviewViewProvider {
 
   // ── HTML ────────────────────────────────────────────────────────
 
-  private getHtmlForWebview(webview: vscode.Webview): string {
+  private getHtmlForWebview(_webview: vscode.Webview): string {
     const nonce = getNonce();
 
     return /* html */ `<!DOCTYPE html>

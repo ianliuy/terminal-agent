@@ -138,7 +138,7 @@ export class AgentGraphManager {
     this.version++;
     this.recomputeRollups(full.id);
 
-    this.emitEvent({ type: 'node-added', nodeId: full.id, node: full });
+    this.emitEvent({ type: 'node-added', nodeId: full.id, timestamp: Date.now() });
 
     return full;
   }
@@ -183,7 +183,7 @@ export class AgentGraphManager {
 
     // Emit events bottom-up so listeners can tear down children first
     for (let i = allIds.length - 1; i >= 0; i--) {
-      this.emitEvent({ type: 'node-removed', nodeId: allIds[i] });
+      this.emitEvent({ type: 'node-removed', nodeId: allIds[i], timestamp: Date.now() });
     }
   }
 
@@ -217,7 +217,7 @@ export class AgentGraphManager {
       this.recomputeRollups(id);
     }
 
-    this.emitEvent({ type: 'node-updated', nodeId: id, changes });
+    this.emitEvent({ type: 'node-updated', nodeId: id, timestamp: Date.now(), changes });
   }
 
   /**
@@ -278,6 +278,7 @@ export class AgentGraphManager {
     this.emitEvent({
       type: 'node-moved',
       nodeId: id,
+      timestamp: Date.now(),
       oldParentId: oldParentId ?? null,
       newParentId,
       newIndex: newIndex ?? newSiblings.indexOf(id),
@@ -309,7 +310,7 @@ export class AgentGraphManager {
     node.updatedAt = Date.now();
     this.version++;
 
-    this.emitEvent({ type: 'node-updated', nodeId: id, changes: {} });
+    this.emitEvent({ type: 'node-updated', nodeId: id, timestamp: Date.now(), changes: {} });
   }
 
   // =========================================================================
@@ -480,6 +481,7 @@ export class AgentGraphManager {
     if (this.batchDepth === 0 && this.pendingEvents.length > 0) {
       const patch: GraphPatch = {
         version: this.version,
+        previousVersion: this.version - 1,
         events: this.pendingEvents.splice(0),
       };
       this.emitter.emit('patch', patch);
@@ -498,6 +500,7 @@ export class AgentGraphManager {
     // Not batching — emit immediately as a single-event patch
     const patch: GraphPatch = {
       version: this.version,
+      previousVersion: this.version - 1,
       events: [event],
     };
     this.emitter.emit('patch', patch);
@@ -568,7 +571,13 @@ export class AgentGraphManager {
     this.batchDepth = 0;
     this.pendingEvents = [];
 
-    this.emitEvent({ type: 'reset' });
+    // Emit a full-reset patch so subscribers know to re-hydrate
+    const resetPatch: GraphPatch = {
+      version: this.version,
+      previousVersion: 0,
+      events: [],
+    };
+    this.emitter.emit('patch', resetPatch);
   }
 
   /** Alias for `getSnapshot()` — useful for JSON.stringify. */
