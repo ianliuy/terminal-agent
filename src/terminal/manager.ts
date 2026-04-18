@@ -576,9 +576,13 @@ export class TerminalManager implements vscode.Disposable {
       return { usedShellIntegration: false };
     }
 
-    // In Code Tunnel / Remote, sendText and si.executeCommand require
-    // the terminal to be focused. Show it and wait for focus to settle.
-    managed.terminal.show(/* preserveFocus */ false);
+    // Show the terminal but preserve focus to avoid sending a focus-in
+    // event (\x1B[I) to the process. ConPTY can fragment the 3-byte
+    // sequence, and Copilot CLI's Ink-based TUI disambiguates a lone
+    // \x1B as an Escape keypress after 50ms — triggering "Operation
+    // cancelled by user" during active operations. (See GitHub issue
+    // github/copilot-cli#2502.)
+    managed.terminal.show(/* preserveFocus */ true);
     await new Promise((r) => setTimeout(r, 150));
 
     // Normal mode: prefer Shell Integration for tracked execution boundaries.
@@ -591,6 +595,53 @@ export class TerminalManager implements vscode.Disposable {
     // Fallback: sendText (Shell Integration not yet ready).
     managed.terminal.sendText(params.text, addNewline);
     return { usedShellIntegration: false };
+  }
+
+  /**
+   * Type text into a terminal by simulating keyboard input through xterm.js.
+   *
+   * Unlike {@link send} which writes directly to the process's stdin via
+   * `terminal.sendText()`, this method uses VS Code's
+   * `workbench.action.terminal.sendSequence` command which feeds characters
+   * through xterm.js's input handler — the same path as physical keyboard
+   * typing. This is critical for TUI applications (like Copilot CLI) that
+   * distinguish between stdin writes and keyboard events.
+   *
+   * The target terminal is focused first (required for sendSequence), then
+   * each character is sent as a keyboard event. This allows typing into
+   * busy TUI applications without triggering their cancel/abort handlers.
+   *
+   * @param params  Terminal ID, text, and optional submit flag.
+   * @returns       Confirmation of what was typed.
+   */
+  async type(params: { terminalId: string; text: string; submit?: boolean }): Promise<{ typed: string; submitted: boolean }> {
+    const managed = this.getManagedForAction(params.terminalId);
+    const submit = params.submit ?? false;
+
+    this.log.debug(`type: id=${params.terminalId} submit=${submit} len=${params.text.length}`);
+
+    // Focus the terminal — sendSequence only works on the active terminal
+    managed.terminal.show(/* preserveFocus */ false);
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Send text through xterm.js via sendSequence
+    // sendSequence interprets \n as Enter, \x1b as Escape, etc.
+    // We send the text as-is (no \n) to avoid premature submission
+    await vscode.commands.executeCommand(
+      'workbench.action.terminal.sendSequence',
+      { text: params.text },
+    );
+
+    if (submit) {
+      // Brief pause then send Enter (\r) through the same xterm.js path
+      await new Promise((r) => setTimeout(r, 50));
+      await vscode.commands.executeCommand(
+        'workbench.action.terminal.sendSequence',
+        { text: '\r' },
+      );
+    }
+
+    return { typed: params.text, submitted: submit };
   }
 
   /**
@@ -607,10 +658,10 @@ export class TerminalManager implements vscode.Disposable {
     const managed = this.getManagedForAction(params.terminalId);
     const sent: string[] = [];
 
-    // In Code Tunnel / Remote, sendText requires the terminal to be focused.
-    // show() is async under the hood; wait for focus to settle before typing.
+    // Show terminal with preserveFocus=true to avoid phantom Escape key.
+    // See comment in send() for the full ConPTY/Ink race condition explanation.
     if (managed.mode !== 'pty') {
-      managed.terminal.show(/* preserveFocus */ false);
+      managed.terminal.show(/* preserveFocus */ true);
       await new Promise((r) => setTimeout(r, 150));
     }
 

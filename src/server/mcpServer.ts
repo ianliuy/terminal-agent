@@ -129,6 +129,35 @@ export function createMcpServer(terminalManager: TerminalManager): McpServer {
     },
   );
 
+  // ── terminal_type ─────────────────────────────────────────────────
+  // Types text through xterm.js (like physical keyboard), safe for busy TUIs.
+
+  server.tool(
+    'terminal_type',
+    'Type text into a terminal by simulating keyboard input through xterm.js. ' +
+      'Unlike terminal_send (which writes to stdin directly), this goes through the same ' +
+      'path as physical keyboard typing. Use this when the target terminal is running a TUI ' +
+      'app (like Copilot CLI) that may be busy/executing — it will queue the input instead of ' +
+      'triggering cancel. Set submit=true to press Enter after typing.',
+    {
+      terminalId: z.string().describe('Terminal ID'),
+      text: z.string().describe('Text to type into the terminal'),
+      submit: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('Whether to press Enter after typing (default: false)'),
+    },
+    async ({ terminalId, text, submit }) => {
+      try {
+        const result = await terminalManager.type({ terminalId, text, submit });
+        return jsonResult(result);
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
   // ── terminal_read ────────────────────────────────────────────────
 
   server.tool(
