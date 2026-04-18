@@ -163,6 +163,13 @@ export class AgentGraphManager {
     const descendants = this.getSubtreeIds(id); // depth-first, excludes self
     const allIds = [id, ...descendants];
 
+    // Capture parentIds before deletion so events can include them
+    const parentIdMap = new Map<string, string | null>();
+    for (const nid of allIds) {
+      const n = this.nodes.get(nid);
+      if (n) parentIdMap.set(nid, n.parentId);
+    }
+
     // Remove from parent's childOrder
     const siblings = this.childOrder.get(parentKey);
     if (siblings) {
@@ -192,7 +199,12 @@ export class AgentGraphManager {
 
     // Emit events bottom-up so listeners can tear down children first
     for (let i = allIds.length - 1; i >= 0; i--) {
-      this.emitEvent({ type: 'node-removed', nodeId: allIds[i], timestamp: Date.now() });
+      this.emitEvent({
+        type: 'node-removed',
+        nodeId: allIds[i],
+        timestamp: Date.now(),
+        oldParentId: parentIdMap.get(allIds[i]) ?? null,
+      });
     }
   }
 
